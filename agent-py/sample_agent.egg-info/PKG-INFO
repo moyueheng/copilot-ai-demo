@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: sample_agent
+Version: 0.0.1
+Requires-Dist: langchain-openai
+Requires-Dist: langchain-anthropic
+Requires-Dist: langchain
+Requires-Dist: openai
+Requires-Dist: langchain-community
+Requires-Dist: copilotkit
+Requires-Dist: uvicorn
+Requires-Dist: python-dotenv
+Requires-Dist: langchain-core
+Requires-Dist: langgraph-cli

@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CopilotKit AI助手演示应用
 
-## Getting Started
+这是一个使用 CopilotKit 构建的智能AI助手演示应用，展示了前端UI与后端Agent的交互。
 
-First, run the development server:
+## 项目结构
+
+- **前端UI** - Next.js应用，提供用户界面
+- **后端Agent** - Python Agent，处理AI逻辑
+
+## 快速开始
+
+### 启动前端UI
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# 安装依赖
+pnpm install
+
+# 启动开发服务器
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+前端将运行在 [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 启动后端Agent
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# 进入agent目录
+cd agent-py
 
-## Learn More
+# 安装依赖（推荐使用uv）
+uv sync
 
-To learn more about Next.js, take a look at the following resources:
+# 启动Agent
+uv run python -m sample_agent.demo
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 功能特性
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- 🔍 搜索历史实时展示
+- 👋 前端工具调用
+- 🌤️ 生成式UI天气卡片
+- ✅ 人工审核流程(HITL)
 
-## Deploy on Vercel
+## 技术栈
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **前端**: Next.js, TypeScript, TailwindCSS, CopilotKit
+- **后端**: Python, CopilotKit Agent

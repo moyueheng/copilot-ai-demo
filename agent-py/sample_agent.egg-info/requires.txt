@@ -1,0 +1,10 @@
+langchain-openai
+langchain-anthropic
+langchain
+openai
+langchain-community
+copilotkit
+uvicorn
+python-dotenv
+langchain-core
+langgraph-cli
