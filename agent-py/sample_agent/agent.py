@@ -10,7 +10,7 @@ import time
 import uuid
 from typing_extensions import Literal
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, AIMessage
+from langchain_core.messages import SystemMessage, AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from langgraph.types import Command
@@ -21,7 +21,6 @@ from copilotkit import CopilotKitState
 from langgraph.types import interrupt 
 import json
 import random
-
 from langgraph.graph import MessagesState
 
 # 配置日志记录
@@ -46,11 +45,8 @@ class AgentState(CopilotKitState):
     同时添加自定义字段用于扩展功能
     """
     # 自定义状态字段
-    proverbs: list[str] = []        # 谚语列表（来自agent_old.py）
-    search_history: list[str] = []  # 搜索历史记录
-    
-    # 审核相关字段
-    approval_status: str = "none"   # 审核状态
+    search_history: list[dict] = []  # 搜索历史记录，格式: [{"query": "关键词", "completed": True/False, "timestamp": "时间戳"}]
+
 
 @tool
 def get_weather(location: str):
@@ -130,7 +126,7 @@ async def get_all_tools():
     
     return _all_tools
 
-async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Literal["tool_node", "__end__"]]:
+async def chat_node(state: AgentState, config: RunnableConfig):
     """
     主要的聊天节点，基于ReAct设计模式
     处理以下功能:
@@ -164,19 +160,13 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
         content=f"""你是一个智能助手，具备搜索和邮件发送功能。请用中文回答。
         
 当前状态信息:
-- 谚语收藏: {len(state.get('proverbs', []))}条谚语
 - 搜索历史: {len(state.get('search_history', []))}次搜索
 
-如果用户提到谚语或格言，你可以将有价值的谚语添加到收藏中。
 如果需要用户提供更多信息，请直接询问，不要返回JSON格式。
 """
     )
     
     # 5. 运行模型生成响应
-
-    # 打印当前历史消息以供调试
-    print("当前历史消息1:")
-    print(state["messages"])
     
     response = await model_with_tools.ainvoke([
         system_message,
@@ -195,25 +185,33 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
             # 更新状态信息
             updated_state = {"messages": response}
             
-            # 如果是搜索工具，更新搜索历史
+            # 如果是搜索工具，更新搜索历史 - 搜索开始阶段
             if response.tool_calls[0].get("name") in ["tavily-search", "tavily-extract", "tavily-crawl"]:
                 search_history = state.get("search_history", [])
                 search_query = response.tool_calls[0].get("args", {})
+                
+                # 创建搜索历史记录 - 开始时标记为未完成
+                search_record = {
+                    "query": search_query.get("query", ""),
+                    "completed": False,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "tool_name": response.tool_calls[0].get("name")
+                }
 
-                logger.info(f"🔍 添加搜索查询到历史: {search_query}")
-                print(f"🔍 添加搜索查询到历史: {search_query}")
-                search_history.append(search_query["query"])
+                logger.info(f"🔍 添加搜索查询到历史 (开始): {search_record}")
+                print(f"🔍 添加搜索查询到历史 (开始): {search_record}")
+                search_history.append(search_record)
                 updated_state["search_history"] = search_history
             
-            return Command(goto="tool_node", update=updated_state)
+            print(f"updated_state: {updated_state}")
+            return updated_state
     
     # 7. 所有工具调用已处理，结束对话
-    return Command(
-        goto=END,
-        update={"messages": response}
-    )
+    # 清空搜索历史记录
+    logger.info("🧹 任务结束，清空搜索历史记录")
+    return {"messages": response, "search_history": []}
 
-async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Literal["chat_node"]]:
+async def tool_node(state: AgentState, config: RunnableConfig):
 
     print('*****************进入 tool_node *****************')
     
@@ -229,7 +227,7 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
     # 检查是否有工具调用
     if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
         logger.warning("⚠️ 没有找到工具调用")
-        return Command(goto="chat_node", update={})
+        return {}
         
     # 只处理第一个工具调用
     tool_call = last_message.tool_calls[0]
@@ -240,23 +238,15 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
         "tool_name": tool_call.get("name"),
         "tool_args": tool_call.get("args", {}),
         "tool_id": tool_call.get("id"),
-        "timestamp": "2025-07-08",
-        "instructions": {
-            "approve": "输入 'approve' 或 '通过' 来批准此工具调用",
-            "reject": "输入 'reject' 或 '拒绝' 来拒绝此工具调用"
-        }
+        "timestamp": "2025-07-08"
     }
     
-    # 使用interrupt等待用户审核决定
-    #approve_status = state["approval_status"]
-    approve_status = 'approve'
-    if(approve_status == "none"):
-        approve_status = interrupt(approval_request)
+    # 使用简化的审核流程 - 直接通过
+    approve_status = interrupt(approval_request)
     
     if approve_status in ["rejected", "reject"]:
         logger.info("❌ 工具调用被拒绝")
         
-        from langchain_core.messages import ToolMessage
         rejection_message = ToolMessage(
             content="工具调用被用户拒绝执行。",
             tool_call_id=last_message.tool_calls[0].get("id"),
@@ -264,13 +254,9 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
         )
         
         # 重置审核状态
-        return Command(
-            goto="chat_node",
-            update={
-                "messages": [rejection_message],
-                "approval_status": "none",  # 重置审核状态
-            }
-        )
+        return {
+            "messages": [rejection_message]
+        }
     
     # 如果审核通过，执行工具调用
     elif approve_status in ["approved", "approve"]:
@@ -329,19 +315,31 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
                 logger.info(f"✅ 工具调用成功: {str(result)[:100]}...")
                 
                 # 创建工具结果消息
-                from langchain_core.messages import ToolMessage
                 tool_message = ToolMessage(
                     content=str(result),
                     tool_call_id=tool_id,
                     name=tool_name
                 )
                 
+                # 如果是搜索工具，标记搜索为完成状态
+                updated_state = {"messages": [tool_message]}
+                if tool_name in ["tavily-search", "tavily-extract", "tavily-crawl"]:
+                    search_history = state.get("search_history", [])
+                    # 找到最近的未完成搜索记录并标记为完成
+                    for record in reversed(search_history):
+                        if not record.get("completed", True) and record.get("tool_name") == tool_name:
+                            record["completed"] = True
+                            record["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            logger.info(f"✅ 标记搜索为完成: {record['query']}")
+                            print(f"✅ 标记搜索为完成: {record['query']}")
+                            break
+                    updated_state["search_history"] = search_history
+                
             except Exception as e:
                 logger.error(f"❌ 工具调用失败: {e}")
                 import traceback
                 traceback.print_exc()
                 # 创建错误消息
-                from langchain_core.messages import ToolMessage
                 tool_message = ToolMessage(
                     content=f"工具调用失败: {str(e)}",
                     tool_call_id=tool_id,
@@ -349,7 +347,6 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
                 )
         else:
             logger.warning(f"❌ 未知工具: {tool_name}")
-            from langchain_core.messages import ToolMessage
             tool_message = ToolMessage(
                 content=f"未知工具: {tool_name}",
                 tool_call_id=tool_id,
@@ -357,22 +354,12 @@ async def tool_node(state: AgentState, config: RunnableConfig) -> Command[Litera
             )
         
         # 重置审核状态并返回工具结果
-        return Command(
-            goto="chat_node",
-            update={
-                "messages": [tool_message],
-                "approval_status": approve_status,  # 重置审核状态
-            }
-        )
+        return updated_state
     
     # 如果状态异常，重置状态
     else:
         logger.warning(f"⚠️ 异常的审核状态")
-        return Command(
-            goto="chat_node",
-            update={
-            }
-        )
+        return {}
 
 async def create_search_agent():
     """创建使用定制状态的搜索智能体
@@ -389,12 +376,43 @@ async def create_search_agent():
     workflow.add_node("tool_node", tool_node)  # 使用自定义的tool_node
     workflow.set_entry_point("chat_node")
     
+    # 添加条件边缘
+    def should_continue(state: AgentState):
+        """判断是否应该继续到工具节点"""
+        last_message = state["messages"][-1]
+        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+            return "tool_node"
+        return END
+    
+    workflow.add_conditional_edges(
+        "chat_node",
+        should_continue,
+        {
+            "tool_node": "tool_node",
+            END: END
+        }
+    )
+    
+    # 从工具节点回到聊天节点
+    workflow.add_edge("tool_node", "chat_node")
+    
     # 创建内存检查点保存器
     checkpointer = MemorySaver()
     
     # 编译并返回图
     agent = workflow.compile(checkpointer=checkpointer)
     return agent
+
+# 创建全局graph实例
+graph = None
+
+async def get_graph():
+    """获取graph实例，如果不存在则创建"""
+    print("正在获取或创建搜索智能体...")
+    global graph
+    if graph is None:
+        graph = await create_search_agent()
+    return graph
 
 # 创建全局graph实例
 graph = None
@@ -408,9 +426,10 @@ async def get_graph():
 
 # 运行初始化
 try:
+    print("正在初始化graph...")
     asyncio.run(get_graph())
 except Exception as e:
-    logger.error(f"初始化graph失败: {e}")
+    print(f"初始化graph失败: {e}")
     # 创建一个简单的fallback graph
     workflow = StateGraph(AgentState)
     
