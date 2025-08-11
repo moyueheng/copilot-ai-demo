@@ -414,15 +414,6 @@ async def get_graph():
         graph = await create_search_agent()
     return graph
 
-# 创建全局graph实例
-graph = None
-
-async def get_graph():
-    """获取graph实例，如果不存在则创建"""
-    global graph
-    if graph is None:
-        graph = await create_search_agent()
-    return graph
 
 # 运行初始化
 try:

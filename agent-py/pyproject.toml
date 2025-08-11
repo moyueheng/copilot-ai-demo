@@ -18,8 +18,13 @@ dependencies = [
     "uvicorn",
     "python-dotenv",
     "langchain-core",
-    "langgraph-cli"
+    "langgraph<0.3",
+    "langchain-mcp-adapters>=0.1.9",
 ]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
 
 [build-system]
 requires = ["setuptools >= 61.0"]

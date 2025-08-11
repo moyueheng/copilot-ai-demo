@@ -4,13 +4,16 @@ through our FastAPI integration. However, you can also host in LangGraph platfor
 """
 
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv() # pylint: disable=wrong-import-position
 
-from fastapi import FastAPI
 import uvicorn
-from copilotkit.integrations.fastapi import add_fastapi_endpoint
 from copilotkit import CopilotKitRemoteEndpoint, LangGraphAgent
+from copilotkit.integrations.fastapi import add_fastapi_endpoint
+from fastapi import FastAPI
+
 from sample_agent.agent import graph
 
 app = FastAPI()
